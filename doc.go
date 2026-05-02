@@ -12,7 +12,7 @@
 //	    "log"
 //	    "os"
 //
-//	    "github.com/originchain/originchain-go"
+//	    "github.com/originchain-ai/originchain-go"
 //	)
 //
 //	func main() {

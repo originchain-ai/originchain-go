@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 
-	"github.com/originchain/originchain-go"
+	"github.com/originchain-ai/originchain-go"
 )
 
 // stubServer is a tiny mock used only in examples so go test can run them
