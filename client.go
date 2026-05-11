@@ -3,6 +3,8 @@ package originchain
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,6 +77,42 @@ func (c *Client) BaseURL() string { return c.baseURL }
 // Tenant returns the tenant ID this client targets.
 func (c *Client) Tenant() string { return c.tenant }
 
+// isMutatingMethod returns true for HTTP methods that change server state.
+// Used to decide whether to auto-attach an Idempotency-Key header.
+func isMutatingMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// newIdempotencyKey returns a fresh UUIDv4 string (canonical hyphenated
+// form). Uses stdlib crypto/rand so the SDK has zero third-party deps —
+// `go.sum` stays empty.
+func newIdempotencyKey() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand.Read never fails on supported platforms; if it
+		// did the only sensible thing is to send an empty header and
+		// let the caller's retry policy take over.
+		return ""
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 1
+	out := make([]byte, 36)
+	hex.Encode(out[0:8], b[0:4])
+	out[8] = '-'
+	hex.Encode(out[9:13], b[4:6])
+	out[13] = '-'
+	hex.Encode(out[14:18], b[6:8])
+	out[18] = '-'
+	hex.Encode(out[19:23], b[8:10])
+	out[23] = '-'
+	hex.Encode(out[24:36], b[10:16])
+	return string(out)
+}
+
 // tenantFromBaseURL derives the tenant ID from the leftmost DNS label of
 // baseURL's hostname. Returns empty string if baseURL doesn't parse — the
 // caller must then set Config.Tenant explicitly.
@@ -126,6 +164,14 @@ func (c *Client) request(
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	// Auto-add Idempotency-Key on mutating methods so a network retry is
+	// safe by default. The engine's idempotency cache is LRU-bounded
+	// (10k entries + 24h TTL) so a fresh UUID per call is cheap; callers
+	// that need cross-process retry semantics can set the header
+	// explicitly via the per-request options.
+	if isMutatingMethod(method) && req.Header.Get("Idempotency-Key") == "" {
+		req.Header.Set("Idempotency-Key", newIdempotencyKey())
 	}
 
 	resp, err := c.http.Do(req)
