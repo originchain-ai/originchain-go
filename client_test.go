@@ -183,6 +183,14 @@ func TestVectorPut(t *testing.T) {
 		if r.URL.Path != "/v1/tenants/test-tenant/vector/embeds/put" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
+		// Mutating call must auto-attach Idempotency-Key so a retry of
+		// the same logical call is safe under the engine's idempotency
+		// cache. Without this assertion, a regression where the SDK
+		// stops sending the header would silently turn every flaky
+		// network into a duplicate write.
+		if got := r.Header.Get("Idempotency-Key"); got == "" {
+			t.Error("Idempotency-Key header missing on mutating call")
+		}
 		var body VectorPutRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.ID != "doc-1" || body.Dim != 3 || len(body.Embedding) != 3 {
@@ -198,6 +206,51 @@ func TestVectorPut(t *testing.T) {
 		Metric:    "cosine",
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIdempotencyKey_GeneratedShape(t *testing.T) {
+	// newIdempotencyKey() must produce canonical UUIDv4 strings — the
+	// engine's idempotency cache treats the value as an opaque key, but
+	// downstream tooling (CloudWatch filters, audit logs) expects the
+	// dash-separated 36-char shape.
+	k := newIdempotencyKey()
+	if len(k) != 36 {
+		t.Fatalf("len = %d, want 36 (got %q)", len(k), k)
+	}
+	if k[8] != '-' || k[13] != '-' || k[18] != '-' || k[23] != '-' {
+		t.Errorf("missing UUID separators: %q", k)
+	}
+	if k[14] != '4' {
+		t.Errorf("version nibble = %q, want '4'", k[14])
+	}
+	// Variant bits: high two bits of byte 8 must be 10 → first char is
+	// in [8, 9, a, b].
+	if !strings.ContainsRune("89ab", rune(k[19])) {
+		t.Errorf("variant nibble = %q, want one of 8/9/a/b", k[19])
+	}
+	// Two consecutive calls must differ.
+	if newIdempotencyKey() == k {
+		t.Error("newIdempotencyKey returned the same value twice in a row")
+	}
+}
+
+func TestIdempotencyKey_NotSentOnGET(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q, want GET", r.Method)
+		}
+		if got := r.Header.Get("Idempotency-Key"); got != "" {
+			t.Errorf("GET should not carry Idempotency-Key, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `[]`)
+	})
+	// FTS search is GET — the read path must NOT consume an idempotency
+	// cache slot.
+	if _, err := c.FTSSearch(context.Background(), "products", "description",
+		FTSSearchRequest{Q: "cold", Mode: "bm25", K: 5}); err != nil {
 		t.Fatal(err)
 	}
 }
