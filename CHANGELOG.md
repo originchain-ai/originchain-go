@@ -6,6 +6,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-22
+
+### Added
+
+- Auto-generated `Idempotency-Key` header on every mutating call
+  (POST / PUT / PATCH / DELETE). Network retries of the same logical
+  call are now safe by default — the engine's idempotency cache
+  (LRU-bounded, 24 h TTL) deduplicates them. GET requests still send
+  no header, so reads do not consume cache slots.
+- `newIdempotencyKey()` produces canonical UUIDv4 strings using
+  `crypto/rand` — zero new third-party dependencies, `go.sum` stays
+  empty.
+
+### Notes
+
+- Versioned 0.3.0 to keep parity with the Python and TypeScript SDKs
+  released on the same date. Behaviorally a single-feature bump over
+  0.1.0; SemVer-pure consumers would see this as 0.2.0.
+
 ## [0.1.0] - 2026-05-02
 
 ### Added
