@@ -2,8 +2,10 @@
 
 Official Go client for [OriginChain](https://originchain.ai) — managed database for AI applications.
 
+> Other languages: Python → [`originchain`](https://pypi.org/project/originchain/) · TypeScript / JS → [`@originchain/sdk`](https://www.npmjs.com/package/@originchain/sdk) · raw HTTP → [originchain.ai/docs](https://originchain.ai/docs).
+
 ```
-go get github.com/originchain/originchain-go
+go get github.com/originchain-ai/originchain-go
 ```
 
 Requires Go **1.21+**.
