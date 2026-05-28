@@ -19,7 +19,7 @@ func (c *Client) FTSIndex(ctx context.Context, table, field string, req FTSIndex
 // FTSSearch runs a full-text search against the per-tenant inverted index
 // for (table, field).
 //
-// Mode controls the matching strategy — see [FTSSearchRequest] for the
+// Mode controls the matching strategy - see [FTSSearchRequest] for the
 // three options. Boolean / phrase results have Score == 0.0; bm25
 // results carry the BM25 ranking weight.
 //

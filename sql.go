@@ -7,13 +7,13 @@ import (
 )
 
 // SQL executes a SQL statement against the substrate. The variadic params
-// are reserved for future use — the v0 wire format takes the literal
+// are reserved for future use - the v0 wire format takes the literal
 // query string, and parameter binding lands in v1. Passing params today
 // is accepted but ignored by the engine.
 //
 // Returns a [SQLResponse] with the discriminated-union shape: see the
 // type's docstring for how to branch on Kind. Errors map per the package
-// convention — APIError on non-2xx, AddonRequiredError on 402.
+// convention - APIError on non-2xx, AddonRequiredError on 402.
 func (c *Client) SQL(ctx context.Context, query string, params ...any) (*SQLResponse, error) {
 	body := map[string]any{"sql": query}
 	if len(params) > 0 {
@@ -47,7 +47,7 @@ func (c *Client) SQL(ctx context.Context, query string, params ...any) (*SQLResp
 			resp.Rows = append(resp.Rows, obj)
 			continue
 		}
-		// Scalar projection — wrap as {"value": ...} to keep Rows uniform.
+		// Scalar projection - wrap as {"value": ...} to keep Rows uniform.
 		var scalar any
 		if err := json.Unmarshal(r, &scalar); err == nil {
 			resp.Rows = append(resp.Rows, map[string]any{"value": scalar})
@@ -58,7 +58,7 @@ func (c *Client) SQL(ctx context.Context, query string, params ...any) (*SQLResp
 
 // SQLOne runs query as a SELECT and returns the first row, or nil when
 // the result set is empty. Errors with [*APIError] of code
-// "validation_failed" if the statement isn't a SELECT — there's no
+// "validation_failed" if the statement isn't a SELECT - there's no
 // "first" of an INSERT or DELETE translation.
 func (c *Client) SQLOne(ctx context.Context, query string, params ...any) (map[string]any, error) {
 	resp, err := c.SQL(ctx, query, params...)

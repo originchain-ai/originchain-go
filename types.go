@@ -7,7 +7,7 @@ import "encoding/json"
 // The engine routes the parsed statement to one of three shapes:
 //
 //   - Kind == "select": the substrate ran the SELECT and Rows holds the
-//     decoded JSON value list — each row is whatever shape the schema's
+//     decoded JSON value list - each row is whatever shape the schema's
 //     projection emits.
 //   - Kind == "insert": the engine translated the INSERT into a typed
 //     payload for /rows/:schema; Schema is set, Rows holds the rows the
@@ -30,7 +30,7 @@ type SQLResponse struct {
 // Dim is required because the substrate validates the embedding length
 // against the table's configured dimensionality on every put. Metric is
 // one of "cosine" / "dot" / "l2" and is checked against the first put's
-// choice for the table — changing it after the index is built returns 400.
+// choice for the table - changing it after the index is built returns 400.
 type VectorPutRequest struct {
 	ID        string         `json:"id"`
 	Embedding []float32      `json:"embedding"`
@@ -42,7 +42,7 @@ type VectorPutRequest struct {
 // VectorTopKRequest is the body for POST /v1/tenants/:t/vector/:table/topk.
 // Mode selects the recall/latency profile: [ModeFast] favours latency,
 // [ModeHighRecall] favours recall. When omitted the server defaults to
-// "high_recall". Filter is a metadata equality filter — non-empty filters
+// "high_recall". Filter is a metadata equality filter - non-empty filters
 // force an HNSW + post-filter codepath server-side.
 type VectorTopKRequest struct {
 	Query  []float32      `json:"query"`
@@ -54,7 +54,7 @@ type VectorTopKRequest struct {
 }
 
 // VectorHit is one topk result. Score semantics depend on the metric the
-// index was built with — cosine and dot return higher-is-closer, l2
+// index was built with - cosine and dot return higher-is-closer, l2
 // returns lower-is-closer. The SDK does not re-sort or normalise; the
 // substrate already returns hits in the right order for the metric.
 type VectorHit struct {
@@ -133,7 +133,7 @@ type PathRequest struct {
 }
 
 // PathResult is the response from /graph/:schema/path. Reachable is the
-// only field the substrate returns in v0 — the actual path itself is not
+// only field the substrate returns in v0 - the actual path itself is not
 // materialised. v1 will surface the edge list.
 type PathResult struct {
 	Reachable bool `json:"reachable"`

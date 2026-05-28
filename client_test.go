@@ -211,7 +211,7 @@ func TestVectorPut(t *testing.T) {
 }
 
 func TestIdempotencyKey_GeneratedShape(t *testing.T) {
-	// newIdempotencyKey() must produce canonical UUIDv4 strings — the
+	// newIdempotencyKey() must produce canonical UUIDv4 strings - the
 	// engine's idempotency cache treats the value as an opaque key, but
 	// downstream tooling (CloudWatch filters, audit logs) expects the
 	// dash-separated 36-char shape.
@@ -247,7 +247,7 @@ func TestIdempotencyKey_NotSentOnGET(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `[]`)
 	})
-	// FTS search is GET — the read path must NOT consume an idempotency
+	// FTS search is GET - the read path must NOT consume an idempotency
 	// cache slot.
 	if _, err := c.FTSSearch(context.Background(), "products", "description",
 		FTSSearchRequest{Q: "cold", Mode: "bm25", K: 5}); err != nil {
@@ -554,7 +554,7 @@ func TestError_402MapsToAddonRequiredError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	// Both errors.As branches should match — AddonRequiredError embeds APIError.
+	// Both errors.As branches should match - AddonRequiredError embeds APIError.
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("not APIError: %v", err)
@@ -622,7 +622,7 @@ func TestError_NonJSONBodyFallsBack(t *testing.T) {
 	}
 }
 
-// errors.Is loose-match by status — useful for retry policies.
+// errors.Is loose-match by status - useful for retry policies.
 func TestAPIError_IsByStatus(t *testing.T) {
 	a := &APIError{Status: 503, Code: "x", Message: "m"}
 	b := &APIError{Status: 503}
