@@ -31,7 +31,7 @@ func (e *APIError) Error() string {
 
 // AddonRequiredError is the typed error for HTTP 402 responses that carry
 // the canonical addon-required envelope. It embeds [APIError] so existing
-// errors.As(&apiErr) sites still match — they just don't see the addon
+// errors.As(&apiErr) sites still match - they just don't see the addon
 // fields unless they branch on the more specific type:
 //
 //	var addonErr *originchain.AddonRequiredError
@@ -78,7 +78,7 @@ func (e *AddonRequiredError) Unwrap() error {
 }
 
 // Is supports errors.Is(err, &APIError{...}) by status when callers want a
-// loose match — typical use is errors.As, but Is keeps idiomatic ergonomics.
+// loose match - typical use is errors.As, but Is keeps idiomatic ergonomics.
 func (e *APIError) Is(target error) bool {
 	t, ok := target.(*APIError)
 	if !ok {

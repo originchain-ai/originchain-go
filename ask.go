@@ -9,7 +9,7 @@ import (
 // engine compiles question into a typed plan, executes it, and returns
 // the rows together with a cache disposition.
 //
-// This is a convenience wrapper for the most common shape — passing a
+// This is a convenience wrapper for the most common shape - passing a
 // schemas allowlist or show_plan is the engine's job in v1; for v0 the
 // SDK keeps the surface small and lets callers drop down to SQL when
 // they need fine control.

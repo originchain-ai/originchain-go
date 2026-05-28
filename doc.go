@@ -1,4 +1,4 @@
-// Package originchain is the official Go client for OriginChain — a managed
+// Package originchain is the official Go client for OriginChain - a managed
 // database for AI applications. It speaks the v1 HTTP API directly against
 // a per-tenant engine endpoint.
 //
@@ -35,7 +35,7 @@
 //
 // This SDK is built against engine versions in the range [1.0.0, 1.x]. It
 // will run against newer engines but unknown response fields are dropped
-// rather than surfaced — bump the SDK to pick them up.
+// rather than surfaced - bump the SDK to pick them up.
 //
 //	const EngineMin = "1.0.0"
 //	const EngineMax = "1.x"

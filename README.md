@@ -1,6 +1,6 @@
 # originchain-go
 
-Official Go client for [OriginChain](https://originchain.ai) — managed database for AI applications.
+Official Go client for [OriginChain](https://originchain.ai) - managed database for AI applications.
 
 > Other languages: Python → [`originchain`](https://pypi.org/project/originchain/) · TypeScript / JS → [`@originchain/sdk`](https://www.npmjs.com/package/@originchain/sdk) · raw HTTP → [originchain.ai/docs](https://originchain.ai/docs).
 
@@ -55,7 +55,7 @@ hits, err := oc.VectorTopK(ctx, "embeds", originchain.VectorTopKRequest{
 })
 ```
 
-`Mode` selects the recall/latency profile — `ModeFast` favours latency, `ModeHighRecall` favours recall. Omit it to let the server default to high-recall.
+`Mode` selects the recall/latency profile - `ModeFast` favours latency, `ModeHighRecall` favours recall. Omit it to let the server default to high-recall.
 
 ## Full-text search
 
@@ -85,7 +85,7 @@ if res.Cost != nil {
 
 `res.Cost` is `nil` when `Dst` is unreachable from `Src` under the supplied weight function.
 
-The other graph endpoints — `Neighbors`, `ReverseNeighbors`, `BFS`, `Path` — share the same shape.
+The other graph endpoints - `Neighbors`, `ReverseNeighbors`, `BFS`, `Path` - share the same shape.
 
 ## Natural-language ask
 
@@ -139,7 +139,7 @@ The SDK speaks the v1 HTTP API. Major engine bumps (2.x) will be accompanied by 
 
 ## Custom HTTP client
 
-`Config.HTTP` overrides the default `&http.Client{Timeout: 30 * time.Second}` — useful for plugging in custom transports, retry middleware, or per-request observability.
+`Config.HTTP` overrides the default `&http.Client{Timeout: 30 * time.Second}` - useful for plugging in custom transports, retry middleware, or per-request observability.
 
 ```go
 oc := originchain.NewClient(originchain.Config{

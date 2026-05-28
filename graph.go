@@ -88,7 +88,7 @@ func (g *Graph) Path(ctx context.Context, schema string, req PathRequest) (*Path
 // Dijkstra finds the cheapest weighted path from req.Src to req.Dst
 // along req.Rel under req.Weights.
 //
-// Weights is JSON-encoded into the weights_json query parameter — the
+// Weights is JSON-encoded into the weights_json query parameter - the
 // engine reads it server-side rather than from a body, because the
 // dijkstra endpoint is GET-shaped to keep traversals cacheable.
 //

@@ -21,7 +21,7 @@ import (
 // "https://01HX...ap-south-1.db.originchain.ai". Trailing slashes are
 // trimmed.
 //
-// Tenant is the tenant ID — the leftmost DNS label of the BaseURL host
+// Tenant is the tenant ID - the leftmost DNS label of the BaseURL host
 // when omitted. Pass it explicitly only when the URL hostname doesn't
 // match the tenant ID (e.g. behind a custom gateway).
 //
@@ -47,7 +47,7 @@ type Client struct {
 // NewClient builds a [Client] from cfg. Panics if BaseURL is empty.
 //
 // The returned client is goroutine-safe and reuses connections via the
-// underlying [http.Client]'s transport. There is no Close method — the
+// underlying [http.Client]'s transport. There is no Close method - the
 // client holds no exclusive resources.
 func NewClient(cfg Config) *Client {
 	if cfg.BaseURL == "" {
@@ -88,7 +88,7 @@ func isMutatingMethod(method string) bool {
 }
 
 // newIdempotencyKey returns a fresh UUIDv4 string (canonical hyphenated
-// form). Uses stdlib crypto/rand so the SDK has zero third-party deps —
+// form). Uses stdlib crypto/rand so the SDK has zero third-party deps -
 // `go.sum` stays empty.
 func newIdempotencyKey() string {
 	var b [16]byte
@@ -114,7 +114,7 @@ func newIdempotencyKey() string {
 }
 
 // tenantFromBaseURL derives the tenant ID from the leftmost DNS label of
-// baseURL's hostname. Returns empty string if baseURL doesn't parse — the
+// baseURL's hostname. Returns empty string if baseURL doesn't parse - the
 // caller must then set Config.Tenant explicitly.
 func tenantFromBaseURL(baseURL string) string {
 	u, err := url.Parse(baseURL)
