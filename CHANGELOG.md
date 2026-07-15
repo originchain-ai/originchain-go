@@ -6,6 +6,47 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-15
+
+### Added
+
+- `Client.Usage()` for `GET /v1/tenants/:t/usage`: live counters, the
+  per-schema breakdown, and the tenant's neutral compute configuration.
+- New types: `TenantUsage`, `SchemaUsage`, `TenantConfiguration`.
+
+### Fixed
+
+- `Version` constant now matches the released tag (it had stayed at
+  `0.1.0` through the 0.3.0 release).
+- README quickstart import path corrected to
+  `github.com/originchain-ai/originchain-go` (was missing the `-ai`
+  and did not compile).
+
+### Notes
+
+- Release lineage restored: v0.3.0 was tagged on a commit chain that a
+  later history rewrite left unreachable from `main`. From v0.4.0 on,
+  every release tag points at a merge commit on `main`.
+
+## [0.3.0] - 2026-05-22
+
+### Added
+
+- Auto-generated `Idempotency-Key` header on every mutating call
+  (POST / PUT / PATCH / DELETE). Network retries of the same logical
+  call are now safe by default — the engine's idempotency cache
+  (LRU-bounded, 24 h TTL) deduplicates them. GET requests still send
+  no header, so reads do not consume cache slots.
+- `newIdempotencyKey()` produces canonical UUIDv4 strings using
+  `crypto/rand` — zero new third-party dependencies, `go.sum` stays
+  empty.
+
+### Notes
+
+- Versioned 0.3.0 to keep parity with the Python and TypeScript SDKs
+  released on the same date. Behaviorally a single-feature bump over
+  0.1.0; SemVer-pure consumers would see this as 0.2.0.
+
 ## [0.1.0] - 2026-05-02
 
 ### Added
