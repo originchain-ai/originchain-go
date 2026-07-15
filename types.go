@@ -165,3 +165,46 @@ type AskResponse struct {
 	Cache string           `json:"cache"`
 	Plan  json.RawMessage  `json:"plan,omitempty"`
 }
+
+// TenantConfiguration is the neutral, spec-based compute configuration
+// returned by GET /v1/tenants/:t/usage.
+//
+// It REPLACES the internal weather codename (thunder/storm/cyclone/…)
+// the engine used to surface - the SDK never exposes that codename.
+// Slug is the stable machine id (entry/standard/advanced/custom); Label
+// is display text such as "4 vCPU / 16 GB, HA". VCPU, RAMGB, StorageGB,
+// and MonthlyPrice are nil for the sales-sized "custom" configuration.
+type TenantConfiguration struct {
+	Slug         string `json:"slug"`
+	Label        string `json:"label"`
+	HA           bool   `json:"ha"`
+	VCPU         *int   `json:"vcpu,omitempty"`
+	RAMGB        *int   `json:"ram_gb,omitempty"`
+	StorageGB    *int64 `json:"storage_gb,omitempty"`
+	MonthlyPrice *int   `json:"monthly_price,omitempty"`
+}
+
+// SchemaUsage is one per-schema row/byte/segment line from /usage.
+type SchemaUsage struct {
+	Schema   string `json:"schema"`
+	Rows     int64  `json:"rows"`
+	Bytes    int64  `json:"bytes"`
+	Segments int64  `json:"segments"`
+}
+
+// TenantUsage is the response of GET /v1/tenants/:t/usage.
+//
+// Tier is the neutral configuration slug (entry/standard/advanced/
+// custom) - never the internal weather codename, which the SDK does not
+// expose. Prefer Configuration for the full spec. Tier, Configuration,
+// and Limits are absent (zero / nil) in legacy per-addon mode. Limits
+// is uint64 because the "custom" envelope uses the u64::MAX fair-use
+// sentinel.
+type TenantUsage struct {
+	Tenant        string               `json:"tenant"`
+	Tier          string               `json:"tier,omitempty"`
+	Configuration *TenantConfiguration `json:"configuration,omitempty"`
+	Limits        map[string]uint64    `json:"limits,omitempty"`
+	Used          map[string]any       `json:"used"`
+	Schemas       []SchemaUsage        `json:"schemas"`
+}
