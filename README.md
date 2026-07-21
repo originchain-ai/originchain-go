@@ -154,4 +154,4 @@ oc := originchain.NewClient(originchain.Config{
 
 ## License
 
-Proprietary. (c) Silicoyn Technologies Pvt Ltd. See `LICENSE`.
+MIT License. (c) 2026 Silicoyn Technologies Pvt Ltd. See `LICENSE`.
