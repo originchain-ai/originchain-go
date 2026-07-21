@@ -53,6 +53,26 @@ func TestNewClient_DerivesTenantFromHostname(t *testing.T) {
 	}
 }
 
+func TestNewClient_ReEncodesFreeTierUUIDToULID(t *testing.T) {
+	// Free-tier endpoints carry the raw instance UUID as the leftmost DNS
+	// label, but engine /v1/tenants/:tenant/... paths want the ULID
+	// re-encoding of those same 128 bits. Sending the UUID gets a 400
+	// "invalid tenant id". Must match the TS SDK's uuidToUlid byte-for-byte.
+	c := NewClient(Config{
+		BaseURL: "https://0190b3e2-8f4a-7c1d-b5e6-0123456789ab.free.originchain.ai",
+		Bearer:  "x",
+	})
+	if got, want := c.Tenant(), "01j2sy53tafgevbsg14d2pf2db"; got != want {
+		t.Errorf("Tenant = %q, want %q (UUID must be re-encoded to ULID)", got, want)
+	}
+}
+
+func TestUUIDToULID_MatchesTSVector(t *testing.T) {
+	if got, want := uuidToULID("0190b3e2-8f4a-7c1d-b5e6-0123456789ab"), "01j2sy53tafgevbsg14d2pf2db"; got != want {
+		t.Errorf("uuidToULID = %q, want %q", got, want)
+	}
+}
+
 func TestNewClient_ExplicitTenantWins(t *testing.T) {
 	c := NewClient(Config{
 		BaseURL: "https://01HX.ap-south-1.db.originchain.ai",

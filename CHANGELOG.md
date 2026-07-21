@@ -6,6 +6,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-21
+
+### Fixed
+
+- Free-tier endpoints: `NewClient` now re-encodes a UUID hostname label
+  (e.g. `<uuid>.free.originchain.ai`) into the engine's ULID tenant-id form,
+  matching the path every `/v1/tenants/:tenant/...` request expects. Before
+  this, free-tier clients that relied on hostname auto-derivation sent the raw
+  UUID and got a 400 "invalid tenant id". Dedicated endpoints (whose label is
+  already the tenant id) are unaffected. Set `Config.Tenant` explicitly to
+  override in either case.
+
+### Added
+
+- `originchain-go/engine compatibility` table in the README corrected to the
+  current SDK version.
+
 ## [0.4.0] - 2026-07-15
 
 ### Added
