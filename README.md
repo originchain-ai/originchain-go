@@ -133,7 +133,7 @@ if e := originchain.AsAPIError(err); e != nil {
 
 | SDK version | Engine min | Engine max |
 | --- | --- | --- |
-| `0.1.0`     | `1.0.0`    | `1.x`      |
+| `0.4.0`     | `1.0.0`    | `1.x`      |
 
 The SDK speaks the v1 HTTP API. Major engine bumps (2.x) will be accompanied by a major SDK bump.
 

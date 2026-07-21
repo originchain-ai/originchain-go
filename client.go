@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -113,8 +115,36 @@ func newIdempotencyKey() string {
 	return string(out)
 }
 
+// uuidRe matches a canonical hyphenated UUID (case-insensitive). Free-tier
+// endpoints carry the raw instance UUID as the leftmost DNS label.
+var uuidRe = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// ulidAlphabet is Crockford base32, lowercased to match engine tenant ids.
+const ulidAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+
+// uuidToULID re-encodes a UUID's 128 bits as a 26-char lowercase ULID - the
+// engine's tenant-id format. Free-tier hostnames (`<uuid>.free.originchain.ai`)
+// carry the raw instance UUID in the subdomain, but every engine
+// `/v1/tenants/:tenant/...` path wants the ULID re-encoding of those same
+// bytes; sending the UUID gets a 400 "invalid tenant id: invalid length".
+func uuidToULID(uuid string) string {
+	n := new(big.Int)
+	if _, ok := n.SetString(strings.ReplaceAll(uuid, "-", ""), 16); !ok {
+		return uuid
+	}
+	mask := big.NewInt(31)
+	tmp := new(big.Int)
+	out := make([]byte, 26)
+	for i := 25; i >= 0; i-- {
+		out[i] = ulidAlphabet[tmp.And(n, mask).Int64()]
+		n.Rsh(n, 5)
+	}
+	return string(out)
+}
+
 // tenantFromBaseURL derives the tenant ID from the leftmost DNS label of
-// baseURL's hostname. Returns empty string if baseURL doesn't parse - the
+// baseURL's hostname. A UUID label (free-tier) is re-encoded to the engine's
+// ULID tenant-id form. Returns empty string if baseURL doesn't parse - the
 // caller must then set Config.Tenant explicitly.
 func tenantFromBaseURL(baseURL string) string {
 	u, err := url.Parse(baseURL)
@@ -122,10 +152,14 @@ func tenantFromBaseURL(baseURL string) string {
 		return ""
 	}
 	host := u.Hostname()
+	label := host
 	if i := strings.IndexByte(host, '.'); i > 0 {
-		return host[:i]
+		label = host[:i]
 	}
-	return host
+	if uuidRe.MatchString(label) {
+		return uuidToULID(label)
+	}
+	return label
 }
 
 // request is the shared HTTP plumbing every typed method runs on top of.

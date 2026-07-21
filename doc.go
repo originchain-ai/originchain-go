@@ -57,7 +57,7 @@ package originchain
 
 // Version is the semantic version of this SDK. Sent on every request as
 // part of the User-Agent header.
-const Version = "0.4.0"
+const Version = "0.4.1"
 
 // EngineMin is the minimum engine version this SDK is known to be
 // compatible with. Older engines may reject requests this SDK sends.
