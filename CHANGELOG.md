@@ -6,6 +6,49 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed - `/sql` response contract
+
+- **`SQLResponse` now models every member the engine can return.** It was a
+  flat four-field struct (`Kind`, `Rows`, `Schema`, `PK`), so an `EXPLAIN`
+  decoded to a `Kind: "explain"` with nothing else - the plan text and stats
+  were silently discarded - and `UPDATE`, transaction control, `buffered`, and
+  every DDL result lost their entire payload. Added `Plan`, `Stats`,
+  `Columns`, `Inserted`, `Updated`, `Skipped`, `Returning`, `RowsAffected`,
+  `RowsBuffered`, `Shard`, `Op`, `OpsCommitted`, `SessionID`, `Index`,
+  `RowsIndexed`, `View`, `Sequence`, `Name`, `Created`, `Dropped`,
+  `Migration`, `State`, `Ops`, plus `Kind*` and `TxOp*` constants for the
+  discriminator values.
+- **`SQLResponse.PK` is now `*string`.** The engine omits `pk` on
+  scan-predicate deletes (only the `WHERE <pk> = <literal>` fastpath carries a
+  row key), which the old `string` reported as `""` - indistinguishable from a
+  real empty key.
+- `Rows` now stays `nil` when the engine omitted it, so a plain `INSERT` is
+  distinguishable from an `INSERT ... RETURNING` that matched no rows.
+- `SQLResponse` decodes itself (`UnmarshalJSON`), so `json.Unmarshal` into the
+  type directly gets the same scalar-row normalisation `Client.SQL` applies.
+
+### Fixed - other wire-contract drift
+
+- **`DijkstraRequest.Weights` is a per-EDGE map** keyed `"<from_pk>|<to_pk>"`.
+  The docs and README example described a relation/column-name map, which the
+  engine matches against nothing - it skips every edge and reports `Cost: nil`
+  ("unreachable") with no error. Added `EdgeWeightKey(from, to)` and corrected
+  the docs, README, and tests.
+- `AskResponse` gained `Explain` (the engine emits it alongside `Plan` under
+  the same `show_plan` flag) and `CacheHit` / `CacheMiss` constants; the old
+  doc listed a `"skip"` disposition the engine never emits.
+- `TenantUsage` gained `AddonCalls` + the `AddonCallUsage` type.
+- Added `Metric*` constants and documented that the engine rejects an
+  unrecognised metric with a 400 rather than defaulting to cosine.
+- Documented that `BFS` / `Path` default to `MaxDepth: 3` server-side when
+  left zero - it is a default, not a clamp on an unlimited traversal.
+
+### Breaking
+
+`SQLResponse.PK` changed from `string` to `*string`. Code that read it
+directly must nil-check; that nil is real engine behaviour the old type could
+not express.
+
 ## [0.4.1] - 2026-07-21
 
 ### Fixed

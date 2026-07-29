@@ -131,18 +131,250 @@ func TestSQL_SelectDecodesRows(t *testing.T) {
 	}
 }
 
-func TestSQL_InsertTranslation(t *testing.T) {
+// -- /sql wire contract ------------------------------------------------
+//
+// The engine's SqlResp is `#[serde(tag = "kind", rename_all = "lowercase")]`,
+// so the literals below are byte-for-byte what the engine emits. They pin the
+// shapes the old flat four-field struct silently discarded.
+
+func TestSQL_InsertReturning(t *testing.T) {
 	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"kind":"insert","schema":"shop.customers","rows":[{"id":"1"}]}`)
+		_, _ = io.WriteString(w, `{"kind":"insert","schema":"shop.customers","inserted":2,`+
+			`"returning":["id","email"],"rows":[{"id":"1","email":"a@b.c"},{"id":"2","email":"d@e.f"}]}`)
 	})
 
-	resp, err := c.SQL(context.Background(), "INSERT INTO shop.customers VALUES (1)")
+	resp, err := c.SQL(context.Background(),
+		"INSERT INTO shop.customers (email) VALUES ('a@b.c'),('d@e.f') RETURNING id, email")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Kind != "insert" || resp.Schema != "shop.customers" {
+	if resp.Kind != KindInsert || resp.Schema != "shop.customers" {
+		t.Fatalf("got %+v", resp)
+	}
+	// `inserted` is always present on an insert and used to be dropped.
+	if resp.Inserted != 2 {
+		t.Errorf("Inserted = %d, want 2", resp.Inserted)
+	}
+	if len(resp.Returning) != 2 || resp.Returning[0] != "id" {
+		t.Errorf("Returning = %v", resp.Returning)
+	}
+	if len(resp.Rows) != 2 || resp.Rows[1]["email"] != "d@e.f" {
+		t.Errorf("Rows = %v", resp.Rows)
+	}
+}
+
+func TestSQL_PlainInsertOmitsReturningAndRows(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"insert","schema":"shop.customers","inserted":1}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "INSERT INTO shop.customers (email) VALUES ('a@b.c')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Inserted != 1 {
+		t.Errorf("Inserted = %d, want 1", resp.Inserted)
+	}
+	// No RETURNING clause -> the engine omits both members. Rows must stay
+	// nil so it is distinguishable from a RETURNING that matched no rows.
+	if resp.Rows != nil {
+		t.Errorf("Rows = %v, want nil", resp.Rows)
+	}
+	if resp.Returning != nil {
+		t.Errorf("Returning = %v, want nil", resp.Returning)
+	}
+	if resp.Updated != nil || resp.Skipped != nil {
+		t.Errorf("Updated/Skipped set on a plain insert: %v %v", resp.Updated, resp.Skipped)
+	}
+}
+
+func TestSQL_Explain(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"explain","plan":"Limit(10)\n  Scan(shop.customers)"}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "EXPLAIN SELECT * FROM shop.customers LIMIT 10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Kind != KindExplain {
+		t.Fatalf("Kind = %q, want %q", resp.Kind, KindExplain)
+	}
+	if !strings.Contains(resp.Plan, "Scan(shop.customers)") {
+		t.Errorf("Plan = %q", resp.Plan)
+	}
+	// Plain EXPLAIN omits `stats`; only EXPLAIN ANALYZE sets it.
+	if resp.Stats != nil {
+		t.Errorf("Stats = %v, want nil", resp.Stats)
+	}
+}
+
+func TestSQL_ExplainAnalyzeCarriesStats(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"explain","plan":"Scan(t)","stats":{"rows":3,"ms":1.5}}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "EXPLAIN ANALYZE SELECT * FROM t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Stats == nil || resp.Stats["rows"] != float64(3) {
+		t.Errorf("Stats = %v", resp.Stats)
+	}
+}
+
+func TestSQL_ScanDeleteOmitsPK(t *testing.T) {
+	// A DELETE with an arbitrary predicate has no single row key, so the
+	// engine omits `pk` entirely. A non-pointer PK reported "" here, which
+	// is indistinguishable from a real empty-string key.
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"delete","schema":"shop.customers","rows_affected":7}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "DELETE FROM shop.customers WHERE active = false")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.PK != nil {
+		t.Errorf("PK = %q, want nil on a scan-predicate delete", *resp.PK)
+	}
+	if resp.RowsAffected == nil || *resp.RowsAffected != 7 {
+		t.Errorf("RowsAffected = %v, want 7", resp.RowsAffected)
+	}
+	// Outside a transaction the buffered count is absent.
+	if resp.RowsBuffered != nil {
+		t.Errorf("RowsBuffered = %v, want nil", resp.RowsBuffered)
+	}
+}
+
+func TestSQL_PKFastpathDeleteSetsPK(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"delete","schema":"shop.customers","pk":"c-1","rows_affected":1}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "DELETE FROM shop.customers WHERE id = 'c-1'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.PK == nil || *resp.PK != "c-1" {
+		t.Errorf("PK = %v, want c-1", resp.PK)
+	}
+}
+
+func TestSQL_Update(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"update","schema":"shop.customers","rows_affected":3}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "UPDATE shop.customers SET active = true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Kind != KindUpdate {
+		t.Fatalf("Kind = %q", resp.Kind)
+	}
+	if resp.RowsAffected == nil || *resp.RowsAffected != 3 {
+		t.Errorf("RowsAffected = %v, want 3", resp.RowsAffected)
+	}
+}
+
+func TestSQL_TxControl(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"tx","op":"commit","ops_committed":4,"session_id":"sess-1"}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "COMMIT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Kind != KindTx || resp.Op != TxOpCommit {
+		t.Fatalf("got %+v", resp)
+	}
+	if resp.OpsCommitted != 4 || resp.SessionID != "sess-1" {
 		t.Errorf("got %+v", resp)
+	}
+}
+
+func TestSQL_DDLKindsAreLowercasedWithoutSeparator(t *testing.T) {
+	// serde's rename_all = "lowercase" does NOT insert an underscore:
+	// CreateIndex serialises as "createindex", not "create_index".
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"createindex","schema":"shop.customers",`+
+			`"index":"idx_email","rows_indexed":120,"created":true}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "CREATE INDEX idx_email ON shop.customers (email)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Kind != KindCreateIndex {
+		t.Fatalf("Kind = %q, want %q", resp.Kind, KindCreateIndex)
+	}
+	if resp.Index != "idx_email" || resp.RowsIndexed != 120 {
+		t.Errorf("got %+v", resp)
+	}
+	if resp.Created == nil || !*resp.Created {
+		t.Errorf("Created = %v, want true", resp.Created)
+	}
+}
+
+func TestSQL_SelectExposesProjectionColumns(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"select","rows":[{"email":"a@b.c","id":1}],"columns":["id","email"]}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "SELECT id, email FROM shop.customers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// JSON object key order is NOT projection order - `columns` is.
+	if len(resp.Columns) != 2 || resp.Columns[0] != "id" || resp.Columns[1] != "email" {
+		t.Errorf("Columns = %v", resp.Columns)
+	}
+}
+
+func TestSQL_ScalarProjectionWrapsRows(t *testing.T) {
+	// A single-column projection emits bare scalars; they are normalised to
+	// {"value": x} so Rows stays uniform.
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"select","rows":["a","b"]}`)
+	})
+
+	resp, err := c.SQL(context.Background(), "SELECT email FROM shop.customers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Rows) != 2 || resp.Rows[0]["value"] != "a" {
+		t.Errorf("Rows = %v", resp.Rows)
+	}
+}
+
+func TestSQL_SendsPositionalParams(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		params, ok := body["params"].([]any)
+		if !ok || len(params) != 1 || params[0] != "c-1" {
+			t.Errorf("params = %v", body["params"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"kind":"select","rows":[]}`)
+	})
+
+	if _, err := c.SQL(context.Background(),
+		"SELECT * FROM shop.customers WHERE id = $1", "c-1"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -179,7 +411,7 @@ func TestSQLOne_NilOnEmpty(t *testing.T) {
 func TestSQLOne_RejectsNonSelect(t *testing.T) {
 	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"kind":"insert","schema":"s","rows":[]}`)
+		_, _ = io.WriteString(w, `{"kind":"insert","schema":"s","inserted":1}`)
 	})
 
 	_, err := c.SQLOne(context.Background(), "INSERT INTO s VALUES (1)")
@@ -459,14 +691,18 @@ func TestGraphPath(t *testing.T) {
 	}
 }
 
-func TestGraphDijkstra_EncodesWeightsAsQueryParam(t *testing.T) {
+func TestGraphDijkstra_EncodesPerEdgeWeightsAsQueryParam(t *testing.T) {
+	// The engine looks each traversed edge up by the literal key
+	// "<from_pk>|<to_pk>" and SKIPS any edge the map does not cover, so a map
+	// keyed by relation or column names silently reports every destination as
+	// unreachable. Keep this keyed by edge - it is the contract.
 	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		raw := r.URL.Query().Get("weights_json")
 		var weights map[string]float64
 		if err := json.Unmarshal([]byte(raw), &weights); err != nil {
 			t.Fatalf("weights_json = %q: %v", raw, err)
 		}
-		if weights["distance"] != 1.0 {
+		if weights["a|c"] != 1.0 || weights["c|b"] != 3.5 {
 			t.Errorf("weights = %+v", weights)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -474,16 +710,25 @@ func TestGraphDijkstra_EncodesWeightsAsQueryParam(t *testing.T) {
 	})
 
 	res, err := c.Graph().Dijkstra(context.Background(), "social", DijkstraRequest{
-		Rel:     "road",
-		Src:     "a",
-		Dst:     "b",
-		Weights: map[string]float64{"distance": 1.0},
+		Rel: "road",
+		Src: "a",
+		Dst: "b",
+		Weights: map[string]float64{
+			EdgeWeightKey("a", "c"): 1.0,
+			EdgeWeightKey("c", "b"): 3.5,
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Cost == nil || *res.Cost != 4.5 {
 		t.Errorf("cost = %+v", res.Cost)
+	}
+}
+
+func TestEdgeWeightKey(t *testing.T) {
+	if got, want := EdgeWeightKey("n1", "n5"), "n1|n5"; got != want {
+		t.Errorf("EdgeWeightKey = %q, want %q", got, want)
 	}
 }
 
@@ -522,8 +767,56 @@ func TestAsk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Cache != "miss" || len(resp.Rows) != 1 {
+	if resp.Cache != CacheMiss || len(resp.Rows) != 1 {
 		t.Errorf("resp = %+v", resp)
+	}
+}
+
+func TestAsk_SurfacesExplainAlongsidePlan(t *testing.T) {
+	// `plan` and `explain` are gated on the same show_plan flag server-side,
+	// so they appear together. `explain` used to be dropped on the floor.
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w,
+			`{"rows":[],"cache":"hit","plan":{"op":"Scan"},"explain":{"op":"Scan","rows":0}}`)
+	})
+
+	resp, err := c.Ask(context.Background(), "anything")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Cache != CacheHit {
+		t.Errorf("Cache = %q", resp.Cache)
+	}
+	if len(resp.Plan) == 0 {
+		t.Error("Plan empty")
+	}
+	if len(resp.Explain) == 0 {
+		t.Error("Explain empty - the engine sent it and the SDK dropped it")
+	}
+}
+
+// -- Usage -------------------------------------------------------------
+
+func TestUsage_SurfacesAddonCallCounters(t *testing.T) {
+	_, c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/tenants/test-tenant/usage" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"tenant":"test-tenant","used":{"store_keys":1},"schemas":[],`+
+			`"addon_calls":[{"addon":"vector-search","allowed":12,"rejected":3}]}`)
+	})
+
+	u, err := c.Usage(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(u.AddonCalls) != 1 || u.AddonCalls[0].Addon != "vector-search" {
+		t.Fatalf("AddonCalls = %+v", u.AddonCalls)
+	}
+	if u.AddonCalls[0].Allowed != 12 || u.AddonCalls[0].Rejected != 3 {
+		t.Errorf("AddonCalls[0] = %+v", u.AddonCalls[0])
 	}
 }
 

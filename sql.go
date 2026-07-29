@@ -2,58 +2,34 @@ package originchain
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 )
 
-// SQL executes a SQL statement against the substrate. The variadic params
-// are reserved for future use - the v0 wire format takes the literal
-// query string, and parameter binding lands in v1. Passing params today
-// is accepted but ignored by the engine.
+// SQL executes a SQL statement against the substrate. params binds the
+// $1, $2, ... placeholders in query positionally (params[0] fills $1); the
+// engine substitutes them at the AST level, never by string splicing. Pass
+// none for a literal statement.
 //
-// Returns a [SQLResponse] with the discriminated-union shape: see the
-// type's docstring for how to branch on Kind. Errors map per the package
-// convention - APIError on non-2xx, AddonRequiredError on 402.
+// Returns a [SQLResponse] - an internally-tagged union. Branch on
+// [SQLResponse.Kind] against the Kind* constants before reading any other
+// member; the engine answers SELECT, INSERT, UPDATE, DELETE, EXPLAIN,
+// transaction control, and every DDL statement through this one endpoint.
+// Errors map per the package convention - APIError on non-2xx,
+// AddonRequiredError on 402.
 func (c *Client) SQL(ctx context.Context, query string, params ...any) (*SQLResponse, error) {
 	body := map[string]any{"sql": query}
 	if len(params) > 0 {
 		body["params"] = params
 	}
 
-	// Decode into a permissive shape first because the wire format puts
-	// rows directly inside a kind="select" envelope but row entries can
-	// be either objects (typical) or scalars (when the projection picks
-	// a single column).
-	var raw struct {
-		Kind   string            `json:"kind"`
-		Rows   []json.RawMessage `json:"rows,omitempty"`
-		Schema string            `json:"schema,omitempty"`
-		PK     string            `json:"pk,omitempty"`
-	}
+	// SQLResponse.UnmarshalJSON owns the envelope decode, including the
+	// scalar-row normalisation a single-column projection needs.
 	path := fmt.Sprintf("/v1/tenants/%s/sql", c.tenant)
-	if err := c.request(ctx, "POST", path, nil, body, &raw); err != nil {
+	var resp SQLResponse
+	if err := c.request(ctx, "POST", path, nil, body, &resp); err != nil {
 		return nil, err
 	}
-
-	resp := &SQLResponse{
-		Kind:   raw.Kind,
-		Schema: raw.Schema,
-		PK:     raw.PK,
-	}
-	resp.Rows = make([]map[string]any, 0, len(raw.Rows))
-	for _, r := range raw.Rows {
-		var obj map[string]any
-		if err := json.Unmarshal(r, &obj); err == nil && obj != nil {
-			resp.Rows = append(resp.Rows, obj)
-			continue
-		}
-		// Scalar projection - wrap as {"value": ...} to keep Rows uniform.
-		var scalar any
-		if err := json.Unmarshal(r, &scalar); err == nil {
-			resp.Rows = append(resp.Rows, map[string]any{"value": scalar})
-		}
-	}
-	return resp, nil
+	return &resp, nil
 }
 
 // SQLOne runs query as a SELECT and returns the first row, or nil when
@@ -65,7 +41,7 @@ func (c *Client) SQLOne(ctx context.Context, query string, params ...any) (map[s
 	if err != nil {
 		return nil, err
 	}
-	if resp.Kind != "select" {
+	if resp.Kind != KindSelect {
 		return nil, &APIError{
 			Status:  400,
 			Code:    "validation_failed",

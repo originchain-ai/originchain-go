@@ -51,6 +51,7 @@ func (g *Graph) oneHop(ctx context.Context, schema, op string, req NeighborsRequ
 
 // BFS runs a breadth-first traversal up to req.MaxDepth hops along
 // req.Rel from req.PK. The returned [BFSHit]s carry the BFS distance.
+// A zero req.MaxDepth omits the parameter and the engine defaults to 3 hops.
 func (g *Graph) BFS(ctx context.Context, schema string, req BFSRequest) ([]BFSHit, error) {
 	q := url.Values{}
 	q.Set("rel", req.Rel)
@@ -67,7 +68,8 @@ func (g *Graph) BFS(ctx context.Context, schema string, req BFSRequest) ([]BFSHi
 }
 
 // Path checks whether req.Dst is reachable from req.Src along req.Rel
-// within req.MaxDepth hops. The actual path is not materialised in v0;
+// within req.MaxDepth hops; a zero req.MaxDepth omits the parameter and the
+// engine defaults to 3 hops. The actual path is not materialised in v0;
 // only [PathResult.Reachable] is meaningful.
 func (g *Graph) Path(ctx context.Context, schema string, req PathRequest) (*PathResult, error) {
 	q := url.Values{}
@@ -88,11 +90,17 @@ func (g *Graph) Path(ctx context.Context, schema string, req PathRequest) (*Path
 // Dijkstra finds the cheapest weighted path from req.Src to req.Dst
 // along req.Rel under req.Weights.
 //
+// req.Weights is a PER-EDGE map keyed "<from_pk>|<to_pk>" - build keys with
+// [EdgeWeightKey]. The engine skips any edge the map does not cover, so a
+// map keyed by relation or column names silently reports every destination
+// as unreachable instead of erroring.
+//
 // Weights is JSON-encoded into the weights_json query parameter - the
 // engine reads it server-side rather than from a body, because the
 // dijkstra endpoint is GET-shaped to keep traversals cacheable.
 //
-// [DijkstraResult.Cost] is nil when Dst is unreachable.
+// [DijkstraResult.Cost] is nil when Dst is unreachable. The engine always
+// emits the member, explicitly null rather than omitted.
 func (g *Graph) Dijkstra(ctx context.Context, schema string, req DijkstraRequest) (*DijkstraResult, error) {
 	weights := req.Weights
 	if weights == nil {
