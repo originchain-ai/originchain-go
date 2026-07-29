@@ -43,6 +43,33 @@ func main() {
 
 The tenant ID is auto-derived from the leftmost DNS label of `BaseURL`. Pass `Config.Tenant` explicitly if you front the engine through a custom gateway whose hostname doesn't match the tenant ID.
 
+## SQL
+
+`SQL` returns a `*SQLResponse`, an internally-tagged union. Branch on `Kind`
+against the `Kind*` constants before reading any other member - the engine
+answers SELECT, INSERT, UPDATE, DELETE, EXPLAIN, transaction control and every
+DDL statement through this one endpoint:
+
+```go
+resp, err := oc.SQL(ctx, "EXPLAIN ANALYZE SELECT * FROM shop.customers")
+switch resp.Kind {
+case originchain.KindSelect:
+    for _, r := range resp.Rows { fmt.Println(r) }
+case originchain.KindExplain:
+    fmt.Println(resp.Plan, resp.Stats)
+case originchain.KindInsert:
+    fmt.Println(resp.Inserted, "rows inserted")
+case originchain.KindDelete:
+    // PK is nil for a scan-predicate delete - only the
+    // `WHERE <pk> = <literal>` fastpath carries a row key.
+    fmt.Println(resp.RowsAffected, resp.PK)
+}
+```
+
+Pointer members are `nil` when the engine omitted them, which is not the same
+as zero. Bind `$1`, `$2`, ... placeholders by passing params positionally:
+`oc.SQL(ctx, "SELECT * FROM t WHERE id = $1", "c-1")`.
+
 ## Vector
 
 ```go
@@ -56,6 +83,11 @@ hits, err := oc.VectorTopK(ctx, "embeds", originchain.VectorTopKRequest{
 ```
 
 `Mode` selects the recall/latency profile - `ModeFast` favours latency, `ModeHighRecall` favours recall. Omit it to let the server default to high-recall.
+
+`Metric` is one of the `Metric*` constants: `MetricCosine` (the default),
+`MetricDot`, `MetricL2`, `MetricManhattan` (alias `MetricL1`). The engine
+rejects anything else with a 400 - `"euclidean"`, `"inner_product"` and
+`"ip"` are **not** accepted.
 
 ## Full-text search
 
@@ -73,19 +105,28 @@ hits, err := oc.FTSSearch(ctx, "docs", "body", originchain.FTSSearchRequest{
 
 ```go
 res, err := oc.Graph().Dijkstra(ctx, "social", originchain.DijkstraRequest{
-    Rel:     "road",
-    Src:     "warehouse",
-    Dst:     "customer",
-    Weights: map[string]float64{"distance": 1.0, "tolls": 0.25},
+    Rel: "road",
+    Src: "warehouse",
+    Dst: "customer",
+    // PER-EDGE weights, keyed "<from_pk>|<to_pk>".
+    Weights: map[string]float64{
+        originchain.EdgeWeightKey("warehouse", "depot"):  1.0,
+        originchain.EdgeWeightKey("depot", "customer"):   0.25,
+    },
 })
 if res.Cost != nil {
     fmt.Printf("cheapest route costs %.2f\n", *res.Cost)
 }
 ```
 
+`Weights` is a per-edge map, **not** a map of relation or column names. The
+engine skips any edge the map doesn't cover, so a wrongly-keyed map reports
+every destination as unreachable (`Cost == nil`) instead of erroring. Build
+keys with `originchain.EdgeWeightKey`.
+
 `res.Cost` is `nil` when `Dst` is unreachable from `Src` under the supplied weight function.
 
-The other graph endpoints - `Neighbors`, `ReverseNeighbors`, `BFS`, `Path` - share the same shape.
+The other graph endpoints - `Neighbors`, `ReverseNeighbors`, `BFS`, `Path` - share the same shape. `BFS` and `Path` default to `MaxDepth: 3` server-side when you leave it zero.
 
 ## Natural-language ask
 

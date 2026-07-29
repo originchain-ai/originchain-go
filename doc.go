@@ -31,6 +31,15 @@
 //	    }
 //	}
 //
+// # SQL responses
+//
+// [Client.SQL] returns an internally-tagged union - branch on
+// [SQLResponse.Kind] against the Kind* constants before reading any other
+// member. Pointer members are nil when the engine omitted them, which is not
+// the same as zero: [SQLResponse.PK] is nil for a scan-predicate DELETE, and
+// [SQLResponse.RowsAffected] / [SQLResponse.RowsBuffered] are mutually
+// exclusive (outside vs inside a transaction).
+//
 // # Engine compatibility
 //
 // This SDK is built against engine versions in the range [1.0.0, 1.x]. It

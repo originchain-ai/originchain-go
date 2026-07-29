@@ -17,12 +17,25 @@ const (
 	ModeHighRecall VectorMode = "high_recall"
 )
 
+// Distance metrics accepted by the vector endpoints. The engine lowercases
+// the value before matching and REJECTS anything outside this set with a
+// 400 - notably "euclidean", "inner_product", and "ip" are not accepted.
+// An empty Metric omits the member and the engine defaults to cosine.
+const (
+	MetricCosine = "cosine"
+	MetricDot    = "dot"
+	MetricL2     = "l2"
+	// MetricManhattan is also accepted under the alias [MetricL1].
+	MetricManhattan = "manhattan"
+	MetricL1        = "l1"
+)
+
 // VectorPut upserts a single vector under (table, req.ID). Dim must match
 // the table's configured dimensionality on every put - the substrate
 // validates it server-side.
 //
-// Metric is one of "cosine" / "dot" / "l2" and is locked at the first
-// put for a table; changing it later returns 400.
+// Metric is one of the Metric* constants and is locked at the first put for
+// a table; changing it later returns 400, as does an unrecognised value.
 func (c *Client) VectorPut(ctx context.Context, table string, req VectorPutRequest) error {
 	path := fmt.Sprintf("/v1/tenants/%s/vector/%s/put", c.tenant, table)
 	return c.request(ctx, "POST", path, nil, req, nil)
