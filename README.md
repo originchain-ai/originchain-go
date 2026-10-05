@@ -125,9 +125,47 @@ Helper sugar for the common case:
 
 ```go
 if e := originchain.AsAPIError(err); e != nil {
-    log.Printf("HTTP %d: %s", e.Status, e.Message)
+    log.Printf("HTTP %d: %s (request %s)", e.Status, e.Message, e.RequestID)
 }
 ```
+
+Every `*APIError` carries two ids:
+
+- `RequestID` is the engine's id for the request (`X-OC-Request-Id`). Include it
+  in a support request: it identifies the exact record on your engine.
+- `LogicalRequestID` is the id the client sent with the call
+  (`X-OC-Logical-Request-Id`, a UUID, with `X-OC-Attempt: 1`). The engine records
+  it next to its own id.
+
+## Diagnostics
+
+Diagnostics are off by default. Turn them on to let OriginChain support see what
+your application saw of its calls, not only what the engine saw:
+
+```go
+oc := originchain.NewClient(originchain.Config{
+    BaseURL:     os.Getenv("OC_BASE_URL"),
+    Bearer:      os.Getenv("OC_BEARER"),
+    Diagnostics: true,
+})
+```
+
+With diagnostics on, the client reports each call to your own engine, with your
+bearer token, in the background:
+
+- the method and path, the outcome and duration;
+- the HTTP status received, or that the request was not sent or got no response;
+- the request ids above, and the engine's error code when it returned one.
+
+The engine keeps only its route template for the path (for example
+`/v1/tenants/:tenant/vector/:table/topk`), so table, key and index names stay on
+your engine. Query strings are removed before anything is queued. SQL,
+parameters, row data, search text, error messages and keys are never sent.
+
+Reporting never slows or fails your calls. Reports wait in a small bounded
+queue and are sent at most once a second; a report that cannot be sent is
+dropped. In a short-lived process, call `oc.FlushDiagnostics(ctx)` before it
+exits.
 
 ## Engine compatibility
 
