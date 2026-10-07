@@ -15,10 +15,16 @@ import "fmt"
 // readable identifier (e.g. "addon_required", "validation_failed") when one
 // was present in the body, or "http_error" as a fallback. Message is the
 // human-readable string the engine returned, falling back to the raw body.
+//
+// RequestID is the engine's id for the request (X-OC-Request-Id) when it sent
+// one: quote it in a support request, it identifies the exact engine record.
+// LogicalRequestID is the id this client sent (X-OC-Logical-Request-Id).
 type APIError struct {
-	Status  int
-	Code    string
-	Message string
+	Status           int
+	Code             string
+	Message          string
+	RequestID        string
+	LogicalRequestID string
 }
 
 // Error implements the error interface.

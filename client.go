@@ -29,11 +29,17 @@ import (
 //
 // HTTP overrides the underlying [http.Client]. When nil the client uses
 // its own [http.Client] with a 30-second timeout.
+//
+// Diagnostics turns on opt-in client diagnostics (default off): each call's
+// method, path, outcome, duration, status and request ids are reported to your
+// own engine, which keeps only the route template. No SQL, parameters, row
+// data, search text, error messages or keys are sent. See [Client.FlushDiagnostics].
 type Config struct {
-	BaseURL string
-	Bearer  string
-	Tenant  string
-	HTTP    *http.Client
+	BaseURL     string
+	Bearer      string
+	Tenant      string
+	HTTP        *http.Client
+	Diagnostics bool
 }
 
 // Client is the entry point for all OriginChain API calls. It is safe for
@@ -44,13 +50,15 @@ type Client struct {
 	tenant  string
 	http    *http.Client
 	graph   *Graph
+	diag    *diagnostics // nil unless Config.Diagnostics
 }
 
 // NewClient builds a [Client] from cfg. Panics if BaseURL is empty.
 //
 // The returned client is goroutine-safe and reuses connections via the
 // underlying [http.Client]'s transport. There is no Close method - the
-// client holds no exclusive resources.
+// client holds no exclusive resources. With [Config.Diagnostics] on, call
+// [Client.FlushDiagnostics] before a short-lived process exits.
 func NewClient(cfg Config) *Client {
 	if cfg.BaseURL == "" {
 		panic("originchain: Config.BaseURL is required")
@@ -70,6 +78,9 @@ func NewClient(cfg Config) *Client {
 		http:    httpc,
 	}
 	c.graph = &Graph{c: c}
+	if cfg.Diagnostics {
+		c.diag = &diagnostics{send: c.sendDiagnostics}
+	}
 	return c
 }
 
@@ -207,20 +218,50 @@ func (c *Client) request(
 	if isMutatingMethod(method) && req.Header.Get("Idempotency-Key") == "" {
 		req.Header.Set("Idempotency-Key", newIdempotencyKey())
 	}
+	// Correlation: one id per call, recorded by the engine next to its own
+	// request id. This client does not retry, so every call is attempt 1.
+	logicalID := newIdempotencyKey()
+	if logicalID != "" {
+		req.Header.Set(headerLogicalRequestID, logicalID)
+		req.Header.Set(headerAttempt, "1")
+	}
 
+	started := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
+		if c.diag != nil {
+			c.diag.push(newDiagnosticEvent(method, path, started, logicalID, 0, "", "", err))
+		}
 		return fmt.Errorf("originchain: request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if c.diag != nil {
+			c.diag.push(newDiagnosticEvent(method, path, started, logicalID, 0, "", "", err))
+		}
 		return fmt.Errorf("originchain: read response: %w", err)
 	}
 
+	requestID := engineRequestID(resp.Header.Get("X-OC-Request-Id"))
 	if resp.StatusCode >= 400 {
-		return mapError(resp.StatusCode, respBody)
+		mapped := mapError(resp.StatusCode, respBody)
+		code := ""
+		if apiErr := AsAPIError(mapped); apiErr != nil {
+			apiErr.RequestID = requestID
+			apiErr.LogicalRequestID = logicalID
+			code = apiErr.Code
+		}
+		if c.diag != nil {
+			c.diag.push(newDiagnosticEvent(method, path, started, logicalID,
+				resp.StatusCode, requestID, code, nil))
+		}
+		return mapped
+	}
+	if c.diag != nil {
+		c.diag.push(newDiagnosticEvent(method, path, started, logicalID,
+			resp.StatusCode, requestID, "", nil))
 	}
 
 	if out == nil || len(respBody) == 0 {

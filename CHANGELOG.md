@@ -6,6 +6,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+### Added
+
+- **Request ids on every error.** `APIError.RequestID` is the engine's id for
+  the request (`X-OC-Request-Id`), to quote in a support request.
+  `APIError.LogicalRequestID` is the id the client sent.
+- **Request correlation.** Every call sends `X-OC-Logical-Request-Id` (a fresh
+  UUID) and `X-OC-Attempt: 1`, which the engine records next to its own request
+  id.
+- **Opt-in diagnostics** (`Config.Diagnostics`, default off): each call's
+  method, path, outcome, duration, status and request ids are reported to your
+  own engine, which keeps only the route template. See the README's
+  "Diagnostics" section. `Client.FlushDiagnostics` sends anything queued.
+
 ## [0.4.1] - 2026-07-21
 
 ### Fixed
